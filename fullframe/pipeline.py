@@ -306,8 +306,10 @@ class Pipeline:
                     self.db.x("UPDATE articles SET body = ? WHERE id = ?", (a["body"], a["id"]))
         prompt = ai.build_prompt(arts, self.sources)
         try:
-            text = self._ask(prompt)
-            res = ai.normalize_result(ai.extract_json(text))
+            try:
+                res = ai.normalize_result(ai.extract_json(self._ask(prompt)))
+            except ValueError:  # malformed JSON now and then: one retry
+                res = ai.normalize_result(ai.extract_json(self._ask(prompt)))
         except llm.QuotaExhausted:
             return False  # not the story's fault; try it again next run
         except Exception as e:  # noqa: BLE001

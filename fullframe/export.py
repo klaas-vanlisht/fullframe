@@ -41,9 +41,17 @@ def export(db, sources, cfg, out_dir, public, ai_status=None, copy_web=False):
 
     if copy_web:
         os.makedirs(out_dir, exist_ok=True)
+        build = now_utc().strftime("%Y%m%d%H%M%S")
         for name in os.listdir(WEB):
             src = os.path.join(WEB, name)
-            if os.path.isfile(src):
+            if not os.path.isfile(src):
+                continue
+            if name == "index.html":  # versioned asset URLs, so browsers never mix old CSS with new HTML
+                with open(src, encoding="utf-8") as f:
+                    html = f.read().replace("__BUILD__", build)
+                with open(os.path.join(out_dir, name), "w", encoding="utf-8") as f:
+                    f.write(html)
+            else:
                 shutil.copy2(src, os.path.join(out_dir, name))
         open(os.path.join(out_dir, ".nojekyll"), "w").close()
         _stamp_assets(os.path.join(out_dir, "index.html"), out_dir)

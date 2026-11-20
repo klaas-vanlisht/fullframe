@@ -103,7 +103,7 @@ def _story_card(st, arts, sources, active):
         "bias": b,
         "source_names": [sources[s]["name"] for s in src_ids if s in sources][:8],
         "score": round(len(src_ids) / (1.0 + hours_ago(st["last_article_at"]) / 6.0), 4),
-        "titles": " ".join(a["title"] for a in arts).lower()[:600],
+        "titles": " ".join(a["title"] for a in arts).lower()[:300],
     }
 
 

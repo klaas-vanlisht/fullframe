@@ -69,6 +69,10 @@
     if (top.length < 8) top = recent;
     return top.sort((a, b) => score(b) - score(a));
   }
+  function weekStories(list, params) {  // biggest stories of the past 7 days, gently favouring recent ones
+    const s7 = (s) => s.n_sources / (1 + hoursAgo(s.updated) / 72);
+    return filterStories(list, params).filter((s) => s.coherent && s.n_sources >= 3).sort((a, b) => s7(b) - s7(a));
+  }
   function latestStories(list, params) {
     return filterStories(list, params).slice().sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
   }
@@ -97,8 +101,9 @@
     return "";
   }
   function card(s, lead = false) {
-    const img = s.image ? `<div class="img"><img src="${safeUrl(s.image)}" alt="" loading="${lead ? "eager" : "lazy"}" referrerpolicy="no-referrer" onerror="imgFail(this)"></div>` : "";
-    return `<a class="card${lead ? " lead" : ""}${img ? "" : " noimg"}" href="#/story/${s.id}">
+    const ph = `<div class="img ph" style="aspect-ratio:16/9"><span>${esc(s.topic)}</span></div>`;
+    const img = !s.image ? (lead ? "" : ph) : `<div class="img" style="aspect-ratio:16/9;overflow:hidden" data-topic="${esc(s.topic)}"><img src="${safeUrl(s.image)}" alt="" loading="${lead ? "eager" : "lazy"}" referrerpolicy="no-referrer" onerror="imgFail(this)" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block"></div>`;
+    return `<a class="card${lead ? " lead" : ""}${s.image ? "" : " noimg"}" href="#/story/${s.id}">
       ${img}
       <div class="body">
         <div class="kicker">${esc(s.topic)} ${gapBadge(s.bias)}</div>
@@ -111,7 +116,7 @@
       </div></a>`;
   }
   function mini(s) {
-    return `<a class="mini${s.image ? "" : " noimg"}" href="#/story/${s.id}">${s.image ? `<img class="mini-img" src="${safeUrl(s.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="imgFail(this)">` : ""}<div class="kicker">${esc(s.topic)} · ${s.n_sources} sources</div>
+    return `<a class="mini${s.image ? "" : " noimg"}" href="#/story/${s.id}">${s.image ? `<img class="mini-img" src="${safeUrl(s.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="imgFail(this)" style="width:76px;height:56px;object-fit:cover;object-position:center">` : ""}<div class="kicker">${esc(s.topic)} · ${s.n_sources} sources</div>
       <h4>${esc(s.headline)}</h4>${biasBar(s.bias, "small")}</a>`;
   }
   function emptyState() {
@@ -184,7 +189,9 @@
   window.imgFail = (img) => {  // publisher blocked the picture: fall back to the text-only layout
     const box = img.closest(".img");
     const cardEl = img.closest(".card, .mini");
-    if (box) box.remove(); else img.remove();
+    if (box && cardEl && !cardEl.classList.contains("lead")) {  // keep the grid even: swap in the placeholder
+      box.className = "img ph"; box.innerHTML = `<span>${box.dataset.topic || ""}</span>`;
+    } else if (box) box.remove(); else img.remove();
     if (cardEl) cardEl.classList.add("noimg");
   };
   function setTab(view) {
@@ -195,16 +202,17 @@
 
   // ---------------------------------------------------------------- views
   async function viewTop(params, view) {
-    const base = view === "latest" ? "/latest" : "/";
+    const base = view === "top" ? "/" : "/" + view;
     setTab(view); filterBar(params, base);
     const all = await loadStories();
-    const list = view === "latest" ? latestStories(all, params) : topStories(all, params);
+    const list = view === "latest" ? latestStories(all, params) : view === "week" ? weekStories(all, params) : topStories(all, params);
     if (!list.length) { app.innerHTML = emptyState(); return; }
-    const title = view === "latest" ? "Latest" : "Top Stories";
-    const sub = view === "latest" ? "Newest stories covered by at least two outlets" : "Ranked by how many outlets are covering them right now";
+    const title = { latest: "Latest", week: "This Week", top: "Top Stories" }[view];
+    const sub = { latest: "Newest stories covered by at least two outlets", week: "The biggest stories of the past 7 days",
+      top: "Ranked by how many outlets are covering them right now" }[view];
     let main;
     if (view === "top") main = card(list[0], true) + `<div class="grid">${list.slice(1, 60).map((s) => card(s)).join("")}</div>`;
-    else main = `<div class="grid">${list.slice(0, 80).map((s) => card(s)).join("")}</div>`;
+    else main = `<div class="grid">${list.slice(0, 120).map((s) => card(s)).join("")}</div>`;
     let aside = "";
     if (view === "top") {
       const g = gapStories(all, params);
@@ -284,7 +292,7 @@
           <div class="kicker">${esc(s.topic)} · first seen ${ago(s.first_seen)} · updated ${ago(s.updated)} ${gapBadge(b)}</div>
           <h1>${esc(s.headline)}</h1>
           ${s.has_ai && s.original_headline !== s.headline ? `<div class="orig">Neutral headline written by AI. Most representative original: “${esc(s.original_headline)}”</div>` : ""}
-          ${s.image ? `<img class="hero" src="${safeUrl(s.image)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
+          ${s.image ? `<img class="hero" src="${safeUrl(s.image)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()" style="width:100%;aspect-ratio:16/9;object-fit:cover;object-position:center">` : ""}
           ${aiHtml}
           <div class="panel" id="articles"><h2>${s.n_articles} reports from ${s.n_sources} outlets</h2>
             <div class="filter">${["all", "left", "center", "right"].map((k) =>
@@ -329,7 +337,7 @@
           <div class="src"><strong>${esc(a.source)}</strong>${a.lang && a.lang !== "en" ? `<span class="lang">${esc(a.lang.toUpperCase())}</span>` : ""}<span class="lean-tag ${a.side}">${esc(a.lean.replace("-", " "))}</span>
             <span class="fact ${esc(a.factuality)}">${esc(a.factuality.replace("-", " "))}</span><span>${ago(a.published)}</span></div>
           <h4>${esc(a.title)}</h4>${a.description ? `<p>${esc(a.description)}</p>` : ""}</a>
-          ${a.image ? `<img class="thumb" src="${safeUrl(a.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : ""}
+          ${a.image ? `<img class="thumb" src="${safeUrl(a.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'" style="width:92px;height:66px;object-fit:cover;object-position:center">` : ""}
         </div>`).join("") || `<p class="aside-note">No reports from this side.</p>`;
     };
     renderList("all");
@@ -385,6 +393,7 @@
     try {
       if (parts[0] === "story" && parts[1]) await viewStory(parts[1]);
       else if (parts[0] === "latest") await viewTop(params, "latest");
+      else if (parts[0] === "week") await viewTop(params, "week");
       else if (parts[0] === "gaps") await viewGaps(params);
       else if (parts[0] === "sources") await viewSources();
       else if (parts[0] === "search") await viewSearch(params);

@@ -3,7 +3,7 @@
   "port": 8642,
   "open_browser": true,
   "refresh_minutes": 30,
-  "max_article_age_hours": 48,
+  "max_article_age_hours": 168,
   "keep_days": 10,
   "cluster_threshold": 0.25,
   "min_sources_top": 3,
@@ -15,9 +15,9 @@
     "max_requests_per_day": 400,
     "claude_path": "",
     "claude_model": "haiku",
-    "min_sources": 3,
-    "max_summaries_per_run": 12,
-    "resummarize_after_new_sources": 3,
+    "min_sources": 5,
+    "max_summaries_per_run": 8,
+    "resummarize_after_new_sources": 4,
     "timeout_seconds": 240,
     "fetch_article_text": true,
     "match_languages": true
@@ -27,7 +27,7 @@
     "site_title": "Fullframe",
     "include_excerpts": false,
     "include_images": true,
-    "keep_days": 4
+    "keep_days": 8
   },
   "filters": {
     "_help": "Keeps shopping deals, food/restaurant reviews, recipes, horoscopes, puzzles and sponsored posts off the site. Built-in rules are in fullframe/filters.py. Add your own regular expressions here (case-insensitive): extra_title_patterns / extra_url_patterns block more, allow_title_patterns rescue headlines a rule caught by mistake.",
