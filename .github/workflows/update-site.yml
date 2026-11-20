@@ -1,0 +1,70 @@
+# Fetches the news, writes AI summaries (Gemini free tier) and publishes the site to GitHub Pages.
+# Runs every 30 minutes; you can also run it by hand from the Actions tab ("Run workflow").
+name: Update site
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"   # every 30 min (off the hour: on-the-hour schedules get delayed most)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["web/**", "sources.json", "config.json", "fullframe/**", "build_site.py"]
+
+permissions:
+  contents: write   # to save the news database to the "data" branch
+  pages: write      # to publish the site
+  id-token: write
+
+concurrency:
+  group: update-site
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Restore news database from the data branch
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin data 2>/dev/null; then
+            git show origin/data:news.db > data/news.db && echo "restored $(du -h data/news.db | cut -f1)"
+          else
+            echo "No data branch yet (first run), starting fresh."
+          fi
+
+      - name: Fetch news, summarize, build site
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python build_site.py
+
+      - name: Save news database to the data branch
+        if: always() && hashFiles('data/news.db') != ''
+        run: |
+          tmp=$(mktemp -d)
+          cp data/news.db "$tmp/"
+          cd "$tmp"
+          git init -q -b data
+          git config user.name "fullframe-bot"
+          git config user.email "fullframe-bot@users.noreply.github.com"
+          git add news.db
+          git commit -qm "news database $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
