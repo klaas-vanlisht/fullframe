@@ -94,6 +94,17 @@ def _local(tag):
     return tag.rsplit("}", 1)[-1].lower() if isinstance(tag, str) else ""
 
 
+_JUNK_IMG = re.compile(r"(?<![a-z])(?:pixel|tracking|1x1|spacer|blank|logo|icon|avatar|placeholder|gravatar|emoji|"
+                       r"feedburner|doubleclick|badge|sprite)s?(?![a-z])|default[-_]image|/ads?/", re.I)
+
+
+def good_image(url):
+    """True for a real photo URL (skips tracking pixels, logos, icons)."""
+    if not url or not url.startswith("http") or len(url) > 2000:
+        return False
+    return not _JUNK_IMG.search(url.split("?")[0] + " " + (url.split("?")[1][:200] if "?" in url else ""))
+
+
 _IMG_IN_HTML = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", re.I)
 
 
@@ -122,6 +133,8 @@ def _item_from_elem(el):
                 d["date"] = parse_date(text)
         if name in ("content", "thumbnail", "enclosure") and not d["image"]:
             url = c.get("url")
+            if not good_image(url):
+                url = None
             typ = (c.get("type") or "").lower()
             medium = (c.get("medium") or "").lower()
             if url and (name == "thumbnail" or medium == "image" or typ.startswith("image")
@@ -129,15 +142,17 @@ def _item_from_elem(el):
                 d["image"] = url
         if name == "group" and not d["image"]:  # media:group > media:content
             for g in c:
-                if _local(g.tag) in ("content", "thumbnail") and g.get("url"):
+                if _local(g.tag) in ("content", "thumbnail") and good_image(g.get("url")):
                     d["image"] = g.get("url")
                     break
         if name == "source" and c.get("url"):
             d["gn_source"] = text
     if not d["image"]:
-        m = _IMG_IN_HTML.search(d["content"] or "") or _IMG_IN_HTML.search(d["description"] or "")
-        if m:
-            d["image"] = html.unescape(m.group(1))
+        for m in _IMG_IN_HTML.finditer((d["content"] or "") + " " + (d["description"] or "")):
+            u = html.unescape(m.group(1))
+            if good_image(u):
+                d["image"] = u
+                break
     return d
 
 
@@ -174,9 +189,13 @@ def _parse_regex(text):
             img = mm.group(1)
         desc = grab("description") or grab("summary")
         content = grab("encoded") or grab("content")
+        if img and not good_image(img):
+            img = None
         if not img:
-            mm = _IMG_IN_HTML.search(content or desc or "")
-            img = html.unescape(mm.group(1)) if mm else None
+            for mm in _IMG_IN_HTML.finditer((content or "") + " " + (desc or "")):
+                if good_image(html.unescape(mm.group(1))):
+                    img = html.unescape(mm.group(1))
+                    break
         out.append({
             "title": grab("title"), "link": html.unescape(link), "description": desc, "content": content,
             "date": parse_date(grab("pubDate") or grab("published") or grab("updated") or grab("date")),
@@ -286,6 +305,33 @@ class _TextExtractor(HTMLParser):
     def handle_data(self, data):
         if self._in_p and not self._skip:
             self._buf.append(data)
+
+
+_OG_IMAGE = re.compile(r"<meta[^>]+(?:property|name)=[\"'](?:og:image|og:image:url|twitter:image)[\"'][^>]*>", re.I)
+_CONTENT = re.compile(r"content=[\"']([^\"']+)[\"']", re.I)
+
+
+def find_og_image(html_text):
+    for m in _OG_IMAGE.finditer(html_text[:300000]):
+        c = _CONTENT.search(m.group(0))
+        if c:
+            u = html.unescape(c.group(1)).strip()
+            if u.startswith("//"):
+                u = "https:" + u
+            if good_image(u):
+                return u
+    return None
+
+
+def fetch_og_image(url):
+    """The article's share image (og:image), or None. Reads only the top of the page."""
+    if "news.google.com" in url:
+        return None
+    try:
+        data, cs, _ = http_get(url, timeout=8, max_bytes=400_000, accept="text/html,*/*;q=0.8")
+        return find_og_image(data.decode(cs or "utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def extract_article_text(url, limit=2500):

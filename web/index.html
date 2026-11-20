@@ -30,7 +30,18 @@
       <button id="refresh-btn" class="btn-ghost" title="Fetch news now" hidden>Refresh</button>
     </div>
   </div>
-  <div class="topics" id="topics"></div>
+  <div class="filters" id="filters">
+    <div class="chiprow" id="countries-row" hidden>
+      <button class="chip-arrow left" aria-label="Scroll left" tabindex="-1">&#8249;</button>
+      <div class="chips" id="countries"></div>
+      <button class="chip-arrow right" aria-label="Scroll right" tabindex="-1">&#8250;</button>
+    </div>
+    <div class="chiprow" id="topics-row" hidden>
+      <button class="chip-arrow left" aria-label="Scroll left" tabindex="-1">&#8249;</button>
+      <div class="chips" id="topics"></div>
+      <button class="chip-arrow right" aria-label="Scroll right" tabindex="-1">&#8250;</button>
+    </div>
+  </div>
 </header>
 <main id="app" class="wrap"></main>
 <footer class="foot wrap">

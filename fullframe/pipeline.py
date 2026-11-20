@@ -92,6 +92,8 @@ class Pipeline:
                 st["progress"] = ""
                 cluster.assign_stories(self.db, self.sources, self.cfg["cluster_threshold"])
                 self.prune()
+                st["stage"] = "finding images"
+                self.fill_missing_images()
             if self.llm and not skip_fetch and self.cfg["ai"].get("match_languages", True):
                 st["stage"] = "matching languages"
                 self.match_across_languages()
@@ -147,6 +149,41 @@ class Pipeline:
                       (url, source_id, it["title"], it["description"], it["image"], iso(pub), iso(now)))
             new += 1
         return new
+
+    def fill_missing_images(self, limit=60):
+        """Give recent multi-outlet stories without a picture one, from an article's og:image."""
+        since = iso(now_utc() - dt.timedelta(hours=36))
+        rows = self.db.q(
+            "SELECT s.id, s.image, COUNT(DISTINCT a.source_id) AS n FROM stories s JOIN articles a ON a.story_id = s.id "
+            "WHERE s.last_article_at >= ? GROUP BY s.id HAVING n >= 2 ORDER BY n DESC", (since,))
+        todo = [r["id"] for r in rows if not feeds.good_image(r["image"])]
+        jobs = []  # (story_id, article_id, url)
+        for sid in todo:
+            arts = self.db.q("SELECT id, url, image FROM articles WHERE story_id = ? ORDER BY published DESC", (sid,))
+            good = next((a["image"] for a in arts if feeds.good_image(a["image"])), None)
+            if good:
+                self.db.x("UPDATE stories SET image = ? WHERE id = ?", (good, sid))
+                continue
+            tried = 0
+            for a in arts:
+                if "news.google.com" not in a["url"] and a["image"] != "none":
+                    jobs.append((sid, a["id"], a["url"]))
+                    tried += 1
+                if tried >= 2:
+                    break
+            if len({j[0] for j in jobs}) >= limit:
+                break
+        if not jobs:
+            return
+        found = set()
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for (sid, aid, url), img in zip(jobs, pool.map(lambda j: feeds.fetch_og_image(j[2]), jobs)):
+                # "none" marks a page we already checked, so it isn't fetched again next run
+                self.db.x("UPDATE articles SET image = ? WHERE id = ?", (img or "none", aid))
+                if img and sid not in found:
+                    found.add(sid)
+                    self.db.x("UPDATE stories SET image = ? WHERE id = ?", (img, sid))
+        print("[images] found pictures for %d of %d stories" % (len(found), len({j[0] for j in jobs})), flush=True)
 
     def prune(self):
         cutoff = iso(now_utc() - dt.timedelta(days=self.cfg["keep_days"]))

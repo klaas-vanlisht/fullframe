@@ -97,7 +97,7 @@
     return "";
   }
   function card(s, lead = false) {
-    const img = s.image ? `<div class="img" style="background-image:url('${safeUrl(s.image)}')"></div>` : "";
+    const img = s.image ? `<div class="img"><img src="${safeUrl(s.image)}" alt="" loading="${lead ? "eager" : "lazy"}" referrerpolicy="no-referrer" onerror="imgFail(this)"></div>` : "";
     return `<a class="card${lead ? " lead" : ""}${img ? "" : " noimg"}" href="#/story/${s.id}">
       ${img}
       <div class="body">
@@ -111,7 +111,7 @@
       </div></a>`;
   }
   function mini(s) {
-    return `<a class="mini" href="#/story/${s.id}"><div class="kicker">${esc(s.topic)} · ${s.n_sources} sources</div>
+    return `<a class="mini${s.image ? "" : " noimg"}" href="#/story/${s.id}">${s.image ? `<img class="mini-img" src="${safeUrl(s.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="imgFail(this)">` : ""}<div class="kicker">${esc(s.topic)} · ${s.n_sources} sources</div>
       <h4>${esc(s.headline)}</h4>${biasBar(s.bias, "small")}</a>`;
   }
   function emptyState() {
@@ -130,13 +130,63 @@
   function filterBar(params, base) {
     const topic = params.get("topic") || "All", country = params.get("country") || "";
     const countries = (status && status.countries) || [];
-    const ctabs = countries.length > 1
-      ? [["", "All countries"], ...countries.map((c) => [c.code, c.name])].map(([v, label]) =>
-          `<a href="${link(base, params, "country", v)}" class="region ${country === v ? "active" : ""}">${esc(label)}</a>`).join("") + `<span class="sep"></span>`
-      : "";
-    $("#topics").innerHTML = ctabs + TOPICS.map((t) =>
+    const crow = $("#countries-row"), trow = $("#topics-row");
+    crow.hidden = countries.length < 2;
+    $("#countries").innerHTML = crow.hidden ? "" : [["", "All countries"], ...countries.map((c) => [c.code, c.name])].map(([v, label]) =>
+      `<a href="${link(base, params, "country", v)}" class="${country === v ? "active" : ""}">${esc(label)}</a>`).join("");
+    trow.hidden = false;
+    $("#topics").innerHTML = TOPICS.map((t) =>
       `<a href="${link(base, params, "topic", t === "All" ? "" : t)}" class="${topic === t ? "active" : ""}">${esc(t)}</a>`).join("");
+    document.querySelectorAll(".chips").forEach((row) => {  // keep the active chip in view
+      const a = row.querySelector("a.active");
+      if (a && (a.offsetLeft < row.scrollLeft || a.offsetLeft + a.offsetWidth > row.scrollLeft + row.clientWidth))
+        row.scrollLeft = a.offsetLeft - 40;
+      updateArrows(row);
+    });
   }
+  function clearFilters() {
+    $("#countries-row").hidden = true; $("#topics-row").hidden = true;
+  }
+  function updateArrows(row) {
+    const wrap = row.parentElement;
+    wrap.classList.toggle("can-left", row.scrollLeft > 4);
+    wrap.classList.toggle("can-right", row.scrollLeft + row.clientWidth < row.scrollWidth - 4);
+  }
+  function setupChipRows() {
+    document.querySelectorAll(".chips").forEach((row) => {
+      row.addEventListener("scroll", () => updateArrows(row), { passive: true });
+      // a normal (vertical) mouse wheel scrolls the row sideways
+      row.addEventListener("wheel", (e) => {
+        if (row.scrollWidth <= row.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        e.preventDefault();
+        row.scrollBy({ left: e.deltaY, behavior: "auto" });
+      }, { passive: false });
+      // click-and-drag with the mouse
+      let down = false, startX = 0, startLeft = 0, moved = false;
+      row.addEventListener("pointerdown", (e) => {
+        if (e.pointerType !== "mouse" || e.button !== 0) return;
+        down = true; moved = false; startX = e.clientX; startLeft = row.scrollLeft;
+      });
+      window.addEventListener("pointermove", (e) => {
+        if (!down) return;
+        const dx = e.clientX - startX;
+        if (Math.abs(dx) > 5) { moved = true; row.classList.add("dragging"); }
+        if (moved) row.scrollLeft = startLeft - dx;
+      });
+      window.addEventListener("pointerup", () => { down = false; setTimeout(() => row.classList.remove("dragging"), 0); });
+      row.addEventListener("click", (e) => { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; } }, true);
+      const wrap = row.parentElement;
+      wrap.querySelector(".chip-arrow.left").addEventListener("click", () => row.scrollBy({ left: -row.clientWidth * 0.7 }));
+      wrap.querySelector(".chip-arrow.right").addEventListener("click", () => row.scrollBy({ left: row.clientWidth * 0.7 }));
+    });
+    window.addEventListener("resize", () => document.querySelectorAll(".chips").forEach(updateArrows));
+  }
+  window.imgFail = (img) => {  // publisher blocked the picture: fall back to the text-only layout
+    const box = img.closest(".img");
+    const cardEl = img.closest(".card, .mini");
+    if (box) box.remove(); else img.remove();
+    if (cardEl) cardEl.classList.add("noimg");
+  };
   function setTab(view) {
     document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
   }
@@ -183,7 +233,7 @@
 
   async function viewSearch(params) {
     const q = params.get("q") || "";
-    setTab(""); $("#topics").innerHTML = "";
+    setTab(""); clearFilters();
     $("#search").value = q;
     const list = searchStories(await loadStories(), q);
     app.innerHTML = `<div class="page-head"><h1>Search: “${esc(q)}”</h1><span class="sub">${list.length} stories</span></div>
@@ -191,7 +241,7 @@
   }
 
   async function viewStory(id) {
-    setTab(""); $("#topics").innerHTML = "";
+    setTab(""); clearFilters();
     let s;
     try { s = await getJSON("data/story/" + encodeURIComponent(id) + ".json"); }
     catch { app.innerHTML = `<div class="empty"><h2>Story not found</h2><p>It may have been merged into another story or aged out. <a href="#/">Back to top stories</a></p></div>`; return; }
@@ -234,7 +284,7 @@
           <div class="kicker">${esc(s.topic)} · first seen ${ago(s.first_seen)} · updated ${ago(s.updated)} ${gapBadge(b)}</div>
           <h1>${esc(s.headline)}</h1>
           ${s.has_ai && s.original_headline !== s.headline ? `<div class="orig">Neutral headline written by AI. Most representative original: “${esc(s.original_headline)}”</div>` : ""}
-          ${s.image ? `<img class="hero" src="${safeUrl(s.image)}" alt="" onerror="this.remove()">` : ""}
+          ${s.image ? `<img class="hero" src="${safeUrl(s.image)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
           ${aiHtml}
           <div class="panel" id="articles"><h2>${s.n_articles} reports from ${s.n_sources} outlets</h2>
             <div class="filter">${["all", "left", "center", "right"].map((k) =>
@@ -279,7 +329,7 @@
           <div class="src"><strong>${esc(a.source)}</strong>${a.lang && a.lang !== "en" ? `<span class="lang">${esc(a.lang.toUpperCase())}</span>` : ""}<span class="lean-tag ${a.side}">${esc(a.lean.replace("-", " "))}</span>
             <span class="fact ${esc(a.factuality)}">${esc(a.factuality.replace("-", " "))}</span><span>${ago(a.published)}</span></div>
           <h4>${esc(a.title)}</h4>${a.description ? `<p>${esc(a.description)}</p>` : ""}</a>
-          ${a.image ? `<img class="thumb" src="${safeUrl(a.image)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : ""}
+          ${a.image ? `<img class="thumb" src="${safeUrl(a.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : ""}
         </div>`).join("") || `<p class="aside-note">No reports from this side.</p>`;
     };
     renderList("all");
@@ -301,7 +351,7 @@
   }
 
   async function viewSources() {
-    setTab("sources"); $("#topics").innerHTML = "";
+    setTab("sources"); clearFilters();
     const list = await getJSON("data/sources.json");
     const n = { left: 0, center: 0, right: 0 };
     list.forEach((s) => { if (n[s.side] !== undefined) n[s.side]++; });
@@ -390,6 +440,7 @@
   }
 
   async function init() {
+    setupChipRows();
     await loadStatus();
     if (status && status.mode === "local") {
       try { live = await (await fetch("api/status", { cache: "no-store" })).json(); LOCAL = true; } catch { /* server gone */ }

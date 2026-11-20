@@ -26,7 +26,7 @@
   "publish": {
     "site_title": "Fullframe",
     "include_excerpts": false,
-    "include_images": false,
+    "include_images": true,
     "keep_days": 4
   }
 }

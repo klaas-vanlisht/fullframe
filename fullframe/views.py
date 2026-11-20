@@ -3,6 +3,7 @@ import datetime as dt
 import json
 from collections import defaultdict
 
+from .feeds import good_image
 from .util import country_names, hours_ago, iso, now_utc
 
 __all__ = ["story_cards", "story_detail", "list_sources", "stats"]
@@ -90,7 +91,7 @@ def _story_card(st, arts, sources, active):
         "headline": (aiobj or {}).get("headline") or st["headline"],
         "original_headline": st["headline"],
         "summary": summary,
-        "image": st["image"],
+        "image": st["image"] if good_image(st["image"]) else None,
         "topic": st["topic"] or "Other",
         "countries": story_countries(src_ids, sources),
         "n_sources": len(src_ids),
@@ -125,7 +126,7 @@ def story_detail(db, sources, story_id, excerpts=True, images=True, active=None)
         s = sources.get(a["source_id"], {})
         out_arts.append({
             "title": a["title"], "url": a["url"], "description": a["description"] if excerpts else None,
-            "image": a["image"] if images else None,
+            "image": a["image"] if images and good_image(a["image"]) else None,
             "published": a["published"], "source_id": a["source_id"], "source": s.get("name", a["source_id"]),
             "lean": s.get("lean", "unrated"), "side": s.get("side", "unrated"),
             "factuality": s.get("factuality", "unrated"), "country": s.get("country"), "lang": s.get("lang", "en"),

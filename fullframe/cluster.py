@@ -8,6 +8,7 @@ import math
 import re
 from collections import Counter, defaultdict
 
+from .feeds import good_image
 from .util import iso, now_utc, parse_iso
 import datetime as dt
 
@@ -244,7 +245,7 @@ def assign_stories(db, sources, threshold=0.3, window_hours=72):
             return c.sim(vecs[a["id"]]) + bonus
 
         rep = max(members, key=rank)
-        image = rep["image"] or next((m["image"] for m in sorted(members, key=rank, reverse=True) if m["image"]), None)
+        image = next((m["image"] for m in [rep] + sorted(members, key=rank, reverse=True) if good_image(m["image"])), None)
         last = max(m["published"] for m in members)
         first = min(m["published"] for m in members)
         topic = guess_topic([m["title"] + " " + (m["description"] or "") for m in members])
