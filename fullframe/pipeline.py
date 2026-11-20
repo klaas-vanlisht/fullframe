@@ -7,6 +7,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import ai, cluster, feeds, llm
+from .filters import ContentFilter
 from .util import hours_ago, iso, now_utc
 
 
@@ -16,6 +17,7 @@ class Pipeline:
         self.lock = threading.Lock()
         self.wake = threading.Event()
         self.llm = llm.make_provider(cfg)
+        self.filter = ContentFilter(cfg)
         self.after_run = None  # callback, e.g. to export the site
         self.status = {
             "running": False, "stage": "idle", "progress": "", "last_run": None, "last_duration_s": None,
@@ -88,6 +90,7 @@ class Pipeline:
             if not skip_fetch:
                 st["stage"] = "fetching"
                 st["new_articles"] = self.fetch_all()
+                self.purge_filtered()
                 st["stage"] = "grouping stories"
                 st["progress"] = ""
                 cluster.assign_stories(self.db, self.sources, self.cfg["cluster_threshold"])
@@ -137,6 +140,8 @@ class Pipeline:
         new = 0
         for it in items:
             url = feeds.canonical_url(it["url"])
+            if self.filter.blocked(it["title"], url):
+                continue  # shopping deals, food reviews, horoscopes, ... (see filters.py)
             pub = it["published"] or now
             if pub > now + dt.timedelta(hours=1):
                 pub = now
@@ -184,6 +189,17 @@ class Pipeline:
                     found.add(sid)
                     self.db.x("UPDATE stories SET image = ? WHERE id = ?", (img, sid))
         print("[images] found pictures for %d of %d stories" % (len(found), len({j[0] for j in jobs})), flush=True)
+
+    def purge_filtered(self):
+        """Apply the content filter to articles already stored (e.g. after editing the filter)."""
+        rows = self.db.q("SELECT id, title, url FROM articles")
+        gone = [r["id"] for r in rows if self.filter.blocked(r["title"], r["url"])]
+        for i in range(0, len(gone), 500):
+            chunk = gone[i:i + 500]
+            self.db.x("DELETE FROM articles WHERE id IN (%s)" % ",".join("?" * len(chunk)), chunk)
+        if gone:
+            self.db.x("DELETE FROM stories WHERE id NOT IN (SELECT DISTINCT story_id FROM articles WHERE story_id IS NOT NULL)")
+            print("[filter] removed %d non-news articles (deals, food reviews, puzzles, ...)" % len(gone), flush=True)
 
     def prune(self):
         cutoff = iso(now_utc() - dt.timedelta(days=self.cfg["keep_days"]))

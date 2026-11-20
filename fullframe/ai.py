@@ -46,7 +46,10 @@ Reply with ONLY one JSON object (no markdown fences, no commentary) with these k
   "differences": "1-3 sentences on the most notable differences in emphasis, omissions or tone between the sides",
   "disputed": ["claims that are contested, unverified, or reported by only one side (can be empty)"],
   "loaded_language": [{"source": "outlet name", "phrase": "exact words from a headline/excerpt, max 8 words", "why": "short reason"}],
-  "topic": "one of: %s"
+  "topic": "one of: %s",
+  "not_news": true only if this is mainly shopping deals or product-buying advice, sponsored or promotional content,
+              recipes, restaurant or food reviews, horoscopes, puzzles or lottery results; false for everything else,
+              including movie, TV, book, music and arts reviews and other cultural coverage
 }
 Keep loaded_language to at most 4 items, drawn from any side where it actually occurs (can be empty)."""
 
@@ -197,6 +200,7 @@ def normalize_result(d):
         "disputed": [s(k, 300) for k in (d.get("disputed") or []) if s(k)][:6],
         "loaded_language": [],
         "topic": d.get("topic") if d.get("topic") in TOPIC_LIST else None,
+        "not_news": d.get("not_news") is True,
     }
     for item in (d.get("loaded_language") or [])[:4]:
         if isinstance(item, dict) and item.get("phrase"):

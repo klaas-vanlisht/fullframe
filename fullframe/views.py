@@ -177,6 +177,8 @@ def story_cards(db, sources, cfg, images=True, min_sources=2):
     for s in stories:
         if len({a["source_id"] for a in by_story.get(s["id"], [])}) < min_sources:
             continue
+        if s.get("ai") and json.loads(s["ai"]).get("not_news"):
+            continue  # the AI flagged it as shopping / food review / puzzle content
         c = _story_card(s, by_story[s["id"]], sources, active)
         if not images:
             c["image"] = None
