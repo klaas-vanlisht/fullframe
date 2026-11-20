@@ -4,6 +4,7 @@ The same files power both the local app (served by server.py) and the public
 website on GitHub Pages. Public builds leave out publishers' excerpts and images
 by default (see "publish" in config.json): only headlines, links and AI summaries.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -21,6 +22,18 @@ def _write_json(path, obj):
     os.replace(tmp, path)
 
 
+def _stamp_assets(index_path, out_dir):
+    """Add a content hash to style.css / app.js links so browsers never mix old and new files."""
+    with open(index_path, encoding="utf-8") as f:
+        page = f.read()
+    for name in ("style.css", "app.js"):
+        with open(os.path.join(out_dir, name), "rb") as f:
+            v = hashlib.sha1(f.read()).hexdigest()[:10]
+        page = page.replace('"%s"' % name, '"%s?v=%s"' % (name, v))
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(page)
+
+
 def export(db, sources, cfg, out_dir, public, ai_status=None, copy_web=False):
     pub = cfg.get("publish", {})
     excerpts = (not public) or pub.get("include_excerpts", False)
@@ -33,6 +46,7 @@ def export(db, sources, cfg, out_dir, public, ai_status=None, copy_web=False):
             if os.path.isfile(src):
                 shutil.copy2(src, os.path.join(out_dir, name))
         open(os.path.join(out_dir, ".nojekyll"), "w").close()
+        _stamp_assets(os.path.join(out_dir, "index.html"), out_dir)
 
     data_dir = os.path.join(out_dir, "data")
     story_dir = os.path.join(data_dir, "story")

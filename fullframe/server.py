@@ -43,7 +43,7 @@ def make_handler(app):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "max-age=300" if cache else "no-store")
+            self.send_header("Cache-Control", "max-age=300" if cache else "no-cache")
             self.end_headers()
             self.wfile.write(body)
 
