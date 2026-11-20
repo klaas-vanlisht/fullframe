@@ -9,7 +9,7 @@ import json
 import os
 import shutil
 
-from . import views
+from . import places, views
 from .util import ROOT, iso, now_utc
 
 WEB = os.path.join(ROOT, "web")
@@ -81,7 +81,7 @@ def export(db, sources, cfg, out_dir, public, ai_status=None, copy_web=False):
         "generated": iso(now_utc()),
         "mode": "static" if public else "local",
         "site_title": pub.get("site_title", "Fullframe"),
-        "countries": views.countries_with_tabs(sources, cfg),
+        "country_names": places.COUNTRY_NAMES,
         "refresh_minutes": cfg["refresh_minutes"],
         "min_sources_top": cfg["min_sources_top"],
         "min_sources_ai": cfg["ai"]["min_sources"],

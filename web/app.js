@@ -37,7 +37,112 @@
     const [path, qs] = h.split("?");
     return { parts: path.split("/").filter(Boolean), params: new URLSearchParams(qs || "") };
   }
-  const countryName = (code) => ((status && status.countries) || []).find((c) => c.code === code)?.name || code;
+  const countryName = (code) => ((status && status.country_names) || {})[code] || code;
+
+  // ---------------------------------------------------------------- cookies, consent and location
+  // Nothing is stored or looked up until the visitor accepts. "ff_consent" remembers the choice
+  // (yes/no); "ff_country" holds the visitor's country code once they've accepted.
+  const COOKIE_PATH = location.pathname.replace(/[^/]*$/, "") || "/";
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function setCookie(name, value, days) {
+    const secure = location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${days * 86400}; Path=${COOKIE_PATH}; SameSite=Lax${secure}`;
+  }
+  const delCookie = (name) => { document.cookie = `${name}=; Max-Age=0; Path=${COOKIE_PATH}`; };
+  const consent = () => getCookie("ff_consent");            // "yes" | "no" | null (not asked yet)
+  const myCountry = () => (consent() === "yes" ? getCookie("ff_country") : null);
+  let locating = false;
+
+  const TZ_COUNTRY = { "Europe/Brussels": "BE", "Europe/Amsterdam": "NL", "Europe/Luxembourg": "LU", "Europe/Paris": "FR",
+    "Europe/Berlin": "DE", "Europe/London": "UK", "Europe/Dublin": "IE", "Europe/Madrid": "ES", "Europe/Rome": "IT",
+    "Europe/Lisbon": "PT", "Europe/Vienna": "AT", "Europe/Zurich": "CH", "Europe/Warsaw": "PL", "Europe/Prague": "CZ",
+    "Europe/Budapest": "HU", "Europe/Bucharest": "RO", "Europe/Athens": "GR", "Europe/Stockholm": "SE", "Europe/Oslo": "NO",
+    "Europe/Copenhagen": "DK", "Europe/Helsinki": "FI", "Europe/Kyiv": "UA", "Europe/Kiev": "UA", "Europe/Moscow": "RU",
+    "Europe/Istanbul": "TR", "Asia/Jerusalem": "IL", "Asia/Kolkata": "IN", "Asia/Calcutta": "IN", "Asia/Tokyo": "JP",
+    "Asia/Shanghai": "CN", "Asia/Hong_Kong": "HK", "Asia/Singapore": "SG", "Asia/Seoul": "KR", "Asia/Taipei": "TW",
+    "Asia/Manila": "PH", "Asia/Jakarta": "ID", "Asia/Bangkok": "TH", "Asia/Karachi": "PK", "Asia/Dubai": "AE",
+    "Pacific/Auckland": "NZ", "America/Mexico_City": "MX", "America/Sao_Paulo": "BR", "America/Argentina/Buenos_Aires": "AR",
+    "America/Bogota": "CO", "America/Lima": "PE", "America/Santiago": "CL", "Africa/Johannesburg": "ZA", "Africa/Lagos": "NG",
+    "Africa/Nairobi": "KE", "Africa/Cairo": "EG", "America/Toronto": "CA", "America/Vancouver": "CA", "America/Edmonton": "CA",
+    "America/Winnipeg": "CA", "America/Halifax": "CA", "America/St_Johns": "CA", "America/Regina": "CA" };
+  function countryFromTimezone() {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    if (TZ_COUNTRY[tz]) return TZ_COUNTRY[tz];
+    if (tz.startsWith("Australia/")) return "AU";
+    if (/^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Detroit|Boise|Indiana|Kentucky|North_Dakota|Juneau|Adak)|^Pacific\/Honolulu/.test(tz)) return "US";
+    return null;
+  }
+  async function lookupCountry() {  // approximate country from the IP address (only after consent)
+    const tries = [
+      ["https://get.geojs.io/v1/ip/country.json", (d) => d.country],
+      ["https://ipapi.co/json/", (d) => d.country_code || d.country],
+    ];
+    for (const [url, pick] of tries) {
+      try {
+        const ctrl = new AbortController(); setTimeout(() => ctrl.abort(), 5000);
+        const r = await fetch(url, { signal: ctrl.signal, cache: "no-store" });
+        if (!r.ok) continue;
+        let c = String(pick(await r.json()) || "").toUpperCase();
+        if (c === "GB") c = "UK";
+        if (/^[A-Z]{2}$/.test(c)) return c;
+      } catch { /* try the next one */ }
+    }
+    return countryFromTimezone();
+  }
+  async function acceptCookies() {
+    setCookie("ff_consent", "yes", 365);
+    hideBanner();
+    if (!getCookie("ff_country")) {
+      locating = true; route();
+      const c = await lookupCountry();
+      locating = false;
+      if (c) setCookie("ff_country", c, 30);
+    }
+    route();
+  }
+  function denyCookies() {
+    setCookie("ff_consent", "no", 365);   // remembering the "no" itself is allowed; nothing else is stored
+    delCookie("ff_country");
+    hideBanner(); route();
+  }
+  function showBanner() {
+    const b = $("#consent");
+    b.hidden = false;
+    b.innerHTML = `<div class="consent-inner">
+      <p><strong>Local news needs your location.</strong> If you accept, Fullframe looks up your approximate country once
+      from your IP address (via the GeoJS service) and remembers it in a cookie on this device. Nothing else is tracked, and
+      everything else on the site works without it.</p>
+      <div class="consent-btns"><button class="btn-solid" id="c-yes">Accept</button><button class="btn-ghost" id="c-no">Deny</button></div></div>`;
+    $("#c-yes").onclick = acceptCookies; $("#c-no").onclick = denyCookies;
+  }
+  function hideBanner() { $("#consent").hidden = true; }
+  function setCountry(code) {
+    if (consent() === "yes" && code) setCookie("ff_country", code, 365);
+    route();
+  }
+  function localGate() {  // what Local shows when there's no location to work with
+    if (locating) return `<div class="empty"><div class="spinner"></div><h2>Finding your location…</h2></div>`;
+    if (consent() === "yes") {
+      return `<div class="empty"><h2>We couldn't work out where you are</h2><p>Pick your country to see local news:</p>
+        ${countryPicker("")}</div>`;
+    }
+    return `<div class="empty"><h2>We can't show local news without your location</h2>
+      <p>${consent() === "no" ? "You turned off location cookies, so we can't tell which country you're in." :
+        "To show local news, Fullframe needs to know which country you're in. That uses a cookie."}
+      Everything else on the site works without it.</p>
+      <p><button class="btn-solid" id="gate-accept">Accept location cookies</button></p>
+      <p class="aside-note">We only store your country code, and you can change your mind any time under "Cookie settings" at the bottom of the page.</p></div>`;
+  }
+  function countryPicker(current) {
+    const names = (status && status.country_names) || {};
+    const opts = Object.entries(names).sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([c, n]) => `<option value="${esc(c)}"${c === current ? " selected" : ""}>${esc(n)}</option>`).join("");
+    return `<select class="country-pick" onchange="window.__setCountry(this.value)"><option value="">Choose a country…</option>${opts}</select>`;
+  }
+  window.__setCountry = setCountry;
 
   // ---------------------------------------------------------------- data
   async function loadStatus() {
@@ -53,17 +158,28 @@
   }
   const score = (s) => s.n_sources / (1 + hoursAgo(s.updated) / 6);
 
+  function isLocal(s, c) {
+    const places = s.places || [];
+    if (places.includes(c)) return true;  // the story is about the visitor's country
+    // domestic news from the visitor's own country's press (e.g. a US Senate vote for US visitors)
+    const home = s.home || [];
+    return home.length > 0 && home.every((h) => h === c) && places.every((p) => p === c) ||
+      (s.countries || []).includes(c) && places.every((p) => p === c);
+  }
   function filterStories(list, params) {
-    const country = params.get("country"), topic = params.get("topic");
+    const scope = params.get("scope"), topic = params.get("topic");
     let out = list;
-    if (country) out = out.filter((s) => (s.countries || []).includes(country));
+    if (scope === "local") { const c = myCountry(); out = c ? out.filter((s) => isLocal(s, c)) : []; }
+    else {
+      out = out.filter((s) => !s.local_only);  // one-outlet local stories only appear under Local
+      if (scope === "intl") out = out.filter((s) => s.intl);
+    }
     if (topic && topic !== "All") out = out.filter((s) => s.topic === topic);
     return out;
   }
+  const needsGate = (params) => params.get("scope") === "local" && !myCountry();
   function topStories(list, params) {
-    const country = params.get("country");
-    const c = country && (status.countries || []).find((x) => x.code === country);
-    const min = c && c.outlets < 8 ? 2 : (status.min_sources_top || 3);
+    const min = params.get("scope") === "local" ? 2 : (status.min_sources_top || 3);
     const recent = filterStories(list, params).filter((s) => hoursAgo(s.updated) <= 36 && s.coherent);
     let top = recent.filter((s) => s.n_sources >= min);
     if (top.length < 8) top = recent;
@@ -136,12 +252,12 @@
     return "#" + base + (qs ? "?" + qs : "");
   }
   function filterBar(params, base) {
-    const topic = params.get("topic") || "All", country = params.get("country") || "";
-    const countries = (status && status.countries) || [];
-    const crow = $("#countries-row"), trow = $("#topics-row");
-    crow.hidden = countries.length < 2;
-    $("#countries").innerHTML = crow.hidden ? "" : [["", "All countries"], ...countries.map((c) => [c.code, c.name])].map(([v, label]) =>
-      `<a href="${link(base, params, "country", v)}" class="${country === v ? "active" : ""}">${esc(label)}</a>`).join("");
+    const topic = params.get("topic") || "All", scope = params.get("scope") || "";
+    const crow = $("#scope-row"), trow = $("#topics-row");
+    crow.hidden = false;
+    const mine = myCountry();
+    $("#scope").innerHTML = [["", "All news"], ["local", mine ? "Local · " + countryName(mine) : "Local"], ["intl", "International"]]
+      .map(([v, label]) => `<a href="${link(base, params, "scope", v)}" class="${scope === v ? "active" : ""}">${esc(label)}</a>`).join("");
     trow.hidden = false;
     $("#topics").innerHTML = TOPICS.map((t) =>
       `<a href="${link(base, params, "topic", t === "All" ? "" : t)}" class="${topic === t ? "active" : ""}">${esc(t)}</a>`).join("");
@@ -153,7 +269,7 @@
     });
   }
   function clearFilters() {
-    $("#countries-row").hidden = true; $("#topics-row").hidden = true;
+    $("#scope-row").hidden = true; $("#topics-row").hidden = true;
   }
   function updateArrows(row) {
     const wrap = row.parentElement;
@@ -200,16 +316,23 @@
   function setTab(view) {
     document.querySelectorAll("#tabs a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
   }
-  const scopeName = (params) => (params.get("country") ? " · " + esc(countryName(params.get("country"))) : "") +
+  const scopeName = (params) => (params.get("scope") === "local" ? " · " + esc(myCountry() ? countryName(myCountry()) : "Local")
+    : params.get("scope") === "intl" ? " · International" : "") +
     (params.get("topic") ? " · " + esc(params.get("topic")) : "");
 
   // ---------------------------------------------------------------- views
   async function viewTop(params, view) {
     const base = view === "top" ? "/" : "/" + view;
     setTab(view); filterBar(params, base);
+    if (needsGate(params)) return showGate();
     const all = await loadStories();
     const list = view === "latest" ? latestStories(all, params) : view === "week" ? weekStories(all, params) : topStories(all, params);
-    if (!list.length) { app.innerHTML = emptyState(); return; }
+    if (!list.length) {
+      app.innerHTML = params.get("scope") === "local"
+        ? `<div class="empty"><h2>No stories about ${esc(countryName(myCountry()))} right now</h2><p>None of the outlets we follow are covering it at the moment. Check back later, or pick another country: ${countryPicker(myCountry())}</p></div>`
+        : emptyState();
+      return;
+    }
     const title = { latest: "Latest", week: "This Week", top: "Top Stories" }[view];
     const sub = { latest: "Newest stories covered by at least two outlets", week: "The biggest stories of the past 7 days",
       top: "Ranked by how many outlets are covering them right now" }[view];
@@ -227,12 +350,20 @@
         <p class="aside-note"><a href="${link("/gaps", params, "x", "")}">See all coverage gaps →</a></p>
       </aside>`;
     }
-    app.innerHTML = `<div class="page-head"><h1>${title}${scopeName(params)}</h1><span class="sub">${sub}</span></div>
+    const change = params.get("scope") === "local" ? `<div class="local-bar"><span>Showing news about <strong>${esc(countryName(myCountry()))}</strong>. Not right?</span> ${countryPicker(myCountry())}</div>` : "";
+    app.innerHTML = `<div class="page-head"><h1>${title}${scopeName(params)}</h1><span class="sub">${sub}</span></div>${change}
       ${aside ? `<div class="home"><div>${main}</div>${aside}</div>` : main}`;
+  }
+
+  function showGate() {
+    app.innerHTML = localGate();
+    const b = $("#gate-accept");
+    if (b) b.onclick = acceptCookies;
   }
 
   async function viewGaps(params) {
     setTab("gaps"); filterBar(params, "/gaps");
+    if (needsGate(params)) return showGate();
     const g = gapStories(await loadStories(), params);
     const col = (list) => (list.length ? `<div class="grid">${list.map((s) => card(s)).join("")}</div>` : `<p class="aside-note">None right now.</p>`);
     app.innerHTML = `<div class="page-head"><h1>Coverage Gaps${scopeName(params)}</h1><span class="sub">Stories one side of the spectrum is barely covering</span></div>
@@ -453,6 +584,8 @@
 
   async function init() {
     setupChipRows();
+    $("#cookie-settings").addEventListener("click", (e) => { e.preventDefault(); showBanner(); });
+    if (!consent()) showBanner();
     await loadStatus();
     if (status && status.mode === "local") {
       try { live = await (await fetch("api/status", { cache: "no-store" })).json(); LOCAL = true; } catch { /* server gone */ }

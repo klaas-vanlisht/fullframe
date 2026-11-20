@@ -63,7 +63,7 @@ code { font-size: .9em; background: var(--rule); padding: 1px 5px; border-radius
 .chips a { flex: 0 0 auto; font-size: 13px; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--rule); color: var(--ink-2); white-space: nowrap; }
 .chips a:hover { border-color: var(--ink-3); color: var(--ink); }
 #topics a.active { border-color: var(--ink); color: var(--ink); font-weight: 600; }
-#countries a.active { background: var(--ink); border-color: var(--ink); color: var(--paper); font-weight: 600; }
+#scope a.active { background: var(--ink); border-color: var(--ink); color: var(--paper); font-weight: 600; }
 .chip-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 30px; height: 26px; border: 0; padding: 0;
   font-size: 20px; line-height: 1; color: var(--ink); cursor: pointer; display: none; }
 .chip-arrow.left { left: 0; background: linear-gradient(to right, var(--paper) 55%, transparent); text-align: left; }
@@ -238,3 +238,21 @@ table.src tr:last-child td { border-bottom: 0; }
   .page-head .sub { display: none; }
   .page-head h1 { font-size: 26px; }
 }
+
+/* ---------- cookie consent + local */
+.consent { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 50; width: min(760px, calc(100% - 28px));
+  background: var(--card); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.consent-inner { display: flex; gap: 18px; align-items: center; padding: 16px 18px; }
+.consent p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.consent p strong { color: var(--ink); }
+.consent-btns { display: flex; gap: 8px; flex: 0 0 auto; }
+.btn-solid { font: inherit; font-size: 13.5px; font-weight: 650; color: var(--paper); background: var(--ink); border: 1px solid var(--ink);
+  border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+.btn-solid:hover { opacity: .88; }
+.consent .btn-ghost { font-size: 13.5px; padding: 7px 16px; }
+.local-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; color: var(--ink-2); margin: -4px 0 18px; }
+.country-pick { font: inherit; font-size: 13.5px; color: var(--ink); background: var(--card); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 5px 8px; margin-top: 4px; }
+.empty .btn-solid { font-size: 15px; padding: 9px 20px; }
+#cookie-settings { color: var(--ink-3); text-decoration: underline; }
+@media (max-width: 640px) { .consent-inner { flex-direction: column; align-items: stretch; } .consent-btns { justify-content: flex-end; } }

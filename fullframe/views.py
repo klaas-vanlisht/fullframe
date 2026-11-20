@@ -4,6 +4,7 @@ import json
 from collections import defaultdict
 
 from .feeds import good_image, upgrade_image_url
+from . import places as placemod
 from .util import country_names, hours_ago, iso, now_utc
 
 __all__ = ["story_cards", "story_detail", "list_sources", "stats"]
@@ -42,6 +43,21 @@ def _denominators(source_ids, sources, active):
         for k in SIDES:
             tot[k] += active.get(c, {}).get(k, 0)
     return {k: max(v, 1) for k, v in tot.items()}
+
+
+def story_places(st, arts, aiobj):
+    """Countries a story is about: the AI's tags and headline/summary mentions, plus countries named
+    in a good share of the outlets' own headlines (one stray mention doesn't count)."""
+    found = set((aiobj or {}).get("countries") or [])
+    found |= placemod.detect((aiobj or {}).get("headline") or "") | placemod.detect((aiobj or {}).get("summary") or "")
+    titles = list({a["title"] for a in arts})
+    counts = defaultdict(int)
+    for t in titles:
+        for c in placemod.detect(t):
+            counts[c] += 1
+    need = 1 if len(titles) <= 3 else max(2, round(len(titles) * 0.25))
+    found |= {c for c, n in counts.items() if n >= need}
+    return found
 
 
 def story_countries(source_ids, sources):
@@ -86,6 +102,9 @@ def _story_card(st, arts, sources, active):
     aiobj = json.loads(st["ai"]) if st.get("ai") else None
     b = _bias(src_ids, sources, _denominators(src_ids, sources, active))
     summary = aiobj.get("summary") if aiobj else None
+    places = story_places(st, arts, aiobj)
+    outlet_countries = {sources[s]["country"] for s in src_ids if s in sources}
+    topic = st["topic"] or "Other"
     return {
         "id": st["id"],
         "headline": (aiobj or {}).get("headline") or st["headline"],
@@ -94,6 +113,10 @@ def _story_card(st, arts, sources, active):
         "image": upgrade_image_url(st["image"]) if good_image(st["image"]) else None,
         "topic": st["topic"] or "Other",
         "countries": story_countries(src_ids, sources),
+        "home": sorted(outlet_countries),
+        "places": sorted(places),
+        # international: about countries other than the ones the covering outlets are from (or a World story)
+        "intl": topic == "World" or bool(places - outlet_countries),
         "n_sources": len(src_ids),
         "n_articles": len(arts),
         "first_seen": st["first_seen"],
@@ -175,8 +198,19 @@ def story_cards(db, sources, cfg, images=True, min_sources=2):
         by_story[a["story_id"]].append(a)
     active = _active_per_side(db, sources)
     cards = []
+    size = defaultdict(int)  # outlets per country
+    for src in sources.values():
+        size[src["country"]] += 1
+    singles = []
     for s in stories:
-        if len({a["source_id"] for a in by_story.get(s["id"], [])}) < min_sources:
+        srcs = {a["source_id"] for a in by_story.get(s["id"], [])}
+        if not srcs:
+            continue
+        if len(srcs) < min_sources:
+            # one-outlet stories from smaller countries' local press still matter for the Local view
+            home = sources.get(next(iter(srcs)), {}).get("country")
+            if len(srcs) == 1 and home and size[home] <= 8:
+                singles.append(s)
             continue
         if s.get("ai") and json.loads(s["ai"]).get("not_news"):
             continue  # the AI flagged it as shopping / food review / puzzle content
@@ -187,6 +221,20 @@ def story_cards(db, sources, cfg, images=True, min_sources=2):
     # keep the download small: the strongest ~900 stories of the week (recent ones get a boost)
     cards.sort(key=lambda c: -(c["n_sources"] / (1.0 + hours_ago(c["updated"]) / 24.0)))
     cards = cards[:cfg.get("publish", {}).get("max_stories", 900)]
+    # plus the newest local one-outlet stories (only shown under Local)
+    singles.sort(key=lambda s: s["last_article_at"] or "", reverse=True)
+    per_country, keep = defaultdict(int), []
+    for s in singles:  # the newest ~40 per country, so no single country crowds out the rest
+        home = sources.get(by_story[s["id"]][0]["source_id"], {}).get("country")
+        if per_country[home] < cfg.get("publish", {}).get("local_singles_per_country", 40):
+            per_country[home] += 1
+            keep.append(s)
+    for s in keep:
+        c = _story_card(s, by_story[s["id"]], sources, active)
+        if not images:
+            c["image"] = None
+        c["local_only"] = True
+        cards.append(c)
     for c in cards:
         if c.get("summary") and len(c["summary"]) > 280:
             c["summary"] = c["summary"][:280].rsplit(" ", 1)[0] + "…"

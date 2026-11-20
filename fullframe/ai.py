@@ -47,6 +47,7 @@ Reply with ONLY one JSON object (no markdown fences, no commentary) with these k
   "disputed": ["claims that are contested, unverified, or reported by only one side (can be empty)"],
   "loaded_language": [{"source": "outlet name", "phrase": "exact words from a headline/excerpt, max 8 words", "why": "short reason"}],
   "topic": "one of: %s",
+  "countries": ["ISO 3166 two-letter codes (use UK for the United Kingdom) of the 1-4 countries this story is mainly about"],
   "not_news": true only if this is mainly shopping deals or product-buying advice, sponsored or promotional content,
               recipes, restaurant or food reviews, horoscopes, puzzles or lottery results; false for everything else,
               including movie, TV, book, music and arts reviews and other cultural coverage
@@ -201,6 +202,8 @@ def normalize_result(d):
         "loaded_language": [],
         "topic": d.get("topic") if d.get("topic") in TOPIC_LIST else None,
         "not_news": d.get("not_news") is True,
+        "countries": sorted({("UK" if str(c).upper() == "GB" else str(c).upper()) for c in (d.get("countries") or [])
+                             if isinstance(c, str) and len(c.strip()) == 2}),
     }
     for item in (d.get("loaded_language") or [])[:4]:
         if isinstance(item, dict) and item.get("phrase"):
