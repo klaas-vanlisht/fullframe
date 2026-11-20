@@ -1,0 +1,32 @@
+{
+  "host": "127.0.0.1",
+  "port": 8642,
+  "open_browser": true,
+  "refresh_minutes": 30,
+  "max_article_age_hours": 48,
+  "keep_days": 10,
+  "cluster_threshold": 0.25,
+  "min_sources_top": 3,
+  "ai": {
+    "enabled": true,
+    "provider": "auto",
+    "gemini_model": "gemini-flash-lite-latest",
+    "min_seconds_between_requests": 7,
+    "max_requests_per_day": 400,
+    "claude_path": "",
+    "claude_model": "haiku",
+    "min_sources": 3,
+    "max_summaries_per_run": 12,
+    "resummarize_after_new_sources": 3,
+    "timeout_seconds": 240,
+    "fetch_article_text": true,
+    "match_languages": true
+  },
+  "min_outlets_for_country_tab": 2,
+  "publish": {
+    "site_title": "Fullframe",
+    "include_excerpts": false,
+    "include_images": false,
+    "keep_days": 4
+  }
+}

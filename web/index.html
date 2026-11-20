@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fullframe</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23161616'/><rect x='5' y='19' width='7' height='4' fill='%233b6fd8'/><rect x='12.5' y='19' width='7' height='4' fill='%23b9b3a6'/><rect x='20' y='19' width='7' height='4' fill='%23d0463b'/><rect x='5' y='9' width='22' height='3' fill='%23f6f4ef'/></svg>">
+<meta name="description" content="Compare how outlets across the political spectrum cover the same news story.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="mast-inner">
+    <a class="logo" href="#/">
+      <span class="logo-mark" aria-hidden="true"><i class="l"></i><i class="c"></i><i class="r"></i></span>
+      <span class="logo-text">Fullframe</span>
+    </a>
+    <nav class="tabs" id="tabs">
+      <a href="#/" data-view="top">Top Stories</a>
+      <a href="#/latest" data-view="latest">Latest</a>
+      <a href="#/gaps" data-view="gaps">Coverage Gaps</a>
+      <a href="#/sources" data-view="sources">Sources</a>
+    </nav>
+    <form class="search" id="search-form" role="search">
+      <input id="search" type="search" placeholder="Search stories…" autocomplete="off" aria-label="Search stories">
+    </form>
+    <div class="status" id="status">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">Starting…</span>
+      <button id="refresh-btn" class="btn-ghost" title="Fetch news now" hidden>Refresh</button>
+    </div>
+  </div>
+  <div class="topics" id="topics"></div>
+</header>
+<main id="app" class="wrap"></main>
+<footer class="foot wrap">
+  Headlines belong to their publishers; follow the links to read the full reports. Summaries are AI-generated and can contain mistakes.
+  Lean and factuality ratings are approximate judgment calls. Fullframe is an independent project, not affiliated with any of the outlets or rating organizations.
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
