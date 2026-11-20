@@ -96,7 +96,7 @@ class Pipeline:
                 cluster.assign_stories(self.db, self.sources, self.cfg["cluster_threshold"])
                 self.prune()
                 st["stage"] = "finding images"
-                self.fill_missing_images()
+                self.improve_images()
             if self.llm and not skip_fetch and self.cfg["ai"].get("match_languages", True):
                 st["stage"] = "matching languages"
                 self.match_across_languages()
@@ -118,7 +118,7 @@ class Pipeline:
         srcs = list(self.sources.values())
         done, new_total = 0, 0
         max_age = self.cfg["max_article_age_hours"]
-        with ThreadPoolExecutor(max_workers=12) as pool:
+        with ThreadPoolExecutor(max_workers=16) as pool:
             futs = {pool.submit(feeds.fetch_source, s, max_age): s for s in srcs}
             for fut in as_completed(futs):
                 s = futs[fut]
@@ -155,40 +155,35 @@ class Pipeline:
             new += 1
         return new
 
-    def fill_missing_images(self, limit=60):
-        """Give recent multi-outlet stories without a picture one, from an article's og:image."""
-        since = iso(now_utc() - dt.timedelta(hours=36))
+    def improve_images(self, limit=80):
+        """Give multi-outlet stories a sharp picture: the article's own share image (og:image, usually
+        1200px wide) beats the small thumbnails most feeds carry. A few pages per story, cached."""
+        since = iso(now_utc() - dt.timedelta(days=7))
         rows = self.db.q(
-            "SELECT s.id, s.image, COUNT(DISTINCT a.source_id) AS n FROM stories s JOIN articles a ON a.story_id = s.id "
-            "WHERE s.last_article_at >= ? GROUP BY s.id HAVING n >= 2 ORDER BY n DESC", (since,))
-        todo = [r["id"] for r in rows if not feeds.good_image(r["image"])]
-        jobs = []  # (story_id, article_id, url)
-        for sid in todo:
-            arts = self.db.q("SELECT id, url, image FROM articles WHERE story_id = ? ORDER BY published DESC", (sid,))
-            good = next((a["image"] for a in arts if feeds.good_image(a["image"])), None)
-            if good:
-                self.db.x("UPDATE stories SET image = ? WHERE id = ?", (good, sid))
+            "SELECT s.id, COUNT(DISTINCT a.source_id) AS n FROM stories s JOIN articles a ON a.story_id = s.id "
+            "WHERE s.last_article_at >= ? AND COALESCE(s.image_hi, 0) = 0 GROUP BY s.id HAVING n >= 2 "
+            "ORDER BY n DESC, s.last_article_at DESC", (since,))
+        jobs, stories = [], 0
+        for r in rows:
+            arts = self.db.q("SELECT id, url FROM articles WHERE story_id = ? AND og_image IS NULL "
+                             "AND url NOT LIKE '%news.google.com%' ORDER BY published DESC LIMIT 2", (r["id"],))
+            if not arts:  # every page already checked: keep whatever picture it has
+                self.db.x("UPDATE stories SET image_hi = 1 WHERE id = ?", (r["id"],))
                 continue
-            tried = 0
-            for a in arts:
-                if "news.google.com" not in a["url"] and a["image"] != "none":
-                    jobs.append((sid, a["id"], a["url"]))
-                    tried += 1
-                if tried >= 2:
-                    break
-            if len({j[0] for j in jobs}) >= limit:
+            jobs += [(r["id"], a["id"], a["url"]) for a in arts]
+            stories += 1
+            if stories >= limit:
                 break
         if not jobs:
             return
         found = set()
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=10) as pool:
             for (sid, aid, url), img in zip(jobs, pool.map(lambda j: feeds.fetch_og_image(j[2]), jobs)):
-                # "none" marks a page we already checked, so it isn't fetched again next run
-                self.db.x("UPDATE articles SET image = ? WHERE id = ?", (img or "none", aid))
+                self.db.x("UPDATE articles SET og_image = ? WHERE id = ?", (img or "none", aid))
                 if img and sid not in found:
                     found.add(sid)
-                    self.db.x("UPDATE stories SET image = ? WHERE id = ?", (img, sid))
-        print("[images] found pictures for %d of %d stories" % (len(found), len({j[0] for j in jobs})), flush=True)
+                    self.db.x("UPDATE stories SET image = ?, image_hi = 1 WHERE id = ?", (img, sid))
+        print("[images] full-size pictures for %d of %d stories" % (len(found), stories), flush=True)
 
     def purge_filtered(self):
         """Apply the content filter to articles already stored (e.g. after editing the filter)."""

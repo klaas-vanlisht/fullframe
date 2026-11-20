@@ -48,6 +48,9 @@ def main():
     # keep the database small: drop fetched article text older than a day, then compact
     db.x("UPDATE articles SET body = NULL WHERE body IS NOT NULL AND fetched < ?",
          (iso(now_utc() - dt.timedelta(hours=24)),))
+    # excerpts are only needed while stories are still being grouped (72h); drop them after 4 days
+    db.x("UPDATE articles SET description = NULL WHERE description IS NOT NULL AND published < ?",
+         (iso(now_utc() - dt.timedelta(days=4)),))
     db.x("VACUUM")
     db.close()
     size = os.path.getsize(db.path) / 1e6

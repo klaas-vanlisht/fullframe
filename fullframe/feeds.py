@@ -105,11 +105,32 @@ def good_image(url):
     return not _JUNK_IMG.search(url.split("?")[0] + " " + (url.split("?")[1][:200] if "?" in url else ""))
 
 
+def upgrade_image_url(u):
+    """Ask publishers' image servers for a large version instead of a feed thumbnail."""
+    if not u:
+        return u
+    v = re.sub(r"(ichef\.bbci\.co\.uk/(?:ace/(?:standard|ws)|news))/\d+/", r"\1/976/", u)          # BBC
+    v = re.sub(r"(s-nbcnews\.com/image/upload/t_fit_)(\d+)w", lambda m: m.group(1) + str(max(1500, int(m.group(2)))) + "w", v)
+    v = re.sub(r"(e3\.365dm\.com/\d+/\d+/)\d+x\d+/", r"\g<1>1600x900/", v)                     # Sky
+    v = re.sub(r"(/thumbnail/)\d+x\d+/", r"\g<1>1280x720/", v) if "cbsnewsstatic" in v else v      # CBS
+    if "brightspotcdn.com" in v:                                                                     # NPR
+        def _rs(m):
+            w, h = int(m.group(1)), int(m.group(2))
+            return "/resize/%dx%d!/" % (1600, round(h * 1600 / w)) if w > 1600 else m.group(0)
+        v = re.sub(r"/resize/(\d+)x(\d+)!/", _rs, v)
+    if "/wp-content/uploads/" in v or "media.breitbart.com" in v:                                    # WordPress sizes
+        v = re.sub(r"-\d{2,4}x\d{2,4}(\.(?:jpe?g|png|webp))(?=$|\?)", r"\1", v)
+    if "guim.co.uk" not in v and not re.search(r"[?&]s=", v):                                       # ?w=300 -> 1600
+        v = re.sub(r"([?&](?:w|width))=(\d+)", lambda m: m.group(1) + "=" + ("1600" if int(m.group(2)) < 1000 else m.group(2)), v)
+    return v
+
+
 _IMG_IN_HTML = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", re.I)
 
 
 def _item_from_elem(el):
     d = {"title": "", "link": "", "description": "", "content": "", "date": None, "image": None, "gn_source": None}
+    best_w = -1  # several media:content sizes are common: keep the widest
     for c in el:
         name = _local(c.tag)
         text = (c.text or "").strip()
@@ -131,20 +152,20 @@ def _item_from_elem(el):
         elif name in ("pubdate", "published", "updated", "date", "issued"):
             if d["date"] is None:
                 d["date"] = parse_date(text)
-        if name in ("content", "thumbnail", "enclosure") and not d["image"]:
-            url = c.get("url")
+        for m in ([c] + list(c) if name == "group" else [c] if name in ("content", "thumbnail", "enclosure") else []):
+            url = m.get("url")  # media:content / media:thumbnail / enclosure (also inside media:group)
             if not good_image(url):
-                url = None
-            typ = (c.get("type") or "").lower()
-            medium = (c.get("medium") or "").lower()
-            if url and (name == "thumbnail" or medium == "image" or typ.startswith("image")
-                        or re.search(r"\.(jpe?g|png|webp|gif)(\?|$)", url, re.I)):
-                d["image"] = url
-        if name == "group" and not d["image"]:  # media:group > media:content
-            for g in c:
-                if _local(g.tag) in ("content", "thumbnail") and good_image(g.get("url")):
-                    d["image"] = g.get("url")
-                    break
+                continue
+            typ, medium = (m.get("type") or "").lower(), (m.get("medium") or "").lower()
+            if not (_local(m.tag) == "thumbnail" or medium == "image" or typ.startswith("image")
+                    or re.search(r"\.(jpe?g|png|webp|gif)(\?|$)", url, re.I)):
+                continue
+            try:
+                w = int(m.get("width") or 0)
+            except ValueError:
+                w = 0
+            if not d["image"] or w > best_w:  # several sizes are common: keep the widest
+                d["image"], best_w = url, w
         if name == "source" and c.get("url"):
             d["gn_source"] = text
     if not d["image"]:

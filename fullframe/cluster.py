@@ -146,7 +146,7 @@ def guess_topic(texts):
 def assign_stories(db, sources, threshold=0.3, window_hours=72):
     """Assign every unclustered article to a story. Returns the set of touched story ids."""
     since = iso(now_utc() - dt.timedelta(hours=window_hours))
-    rows = db.q("SELECT id, source_id, title, description, image, published, story_id FROM articles "
+    rows = db.q("SELECT id, source_id, title, description, image, og_image, published, story_id FROM articles "
                 "WHERE published >= ? ORDER BY published", (since,))
     if not rows:
         return set()
@@ -245,7 +245,9 @@ def assign_stories(db, sources, threshold=0.3, window_hours=72):
             return c.sim(vecs[a["id"]]) + bonus
 
         rep = max(members, key=rank)
-        image = next((m["image"] for m in [rep] + sorted(members, key=rank, reverse=True) if good_image(m["image"])), None)
+        ordered = [rep] + sorted(members, key=rank, reverse=True)
+        image = next((m["og_image"] for m in ordered if good_image(m["og_image"])), None) or \
+            next((m["image"] for m in ordered if good_image(m["image"])), None)  # full-size share image first
         last = max(m["published"] for m in members)
         first = min(m["published"] for m in members)
         topic = guess_topic([m["title"] + " " + (m["description"] or "") for m in members])

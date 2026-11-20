@@ -37,7 +37,12 @@ jobs:
         run: |
           mkdir -p data
           if git fetch --depth=1 origin data 2>/dev/null; then
-            git show origin/data:news.db > data/news.db && echo "restored $(du -h data/news.db | cut -f1)"
+            if git cat-file -e origin/data:news.db.gz 2>/dev/null; then
+              git show origin/data:news.db.gz | gunzip > data/news.db
+            else
+              git show origin/data:news.db > data/news.db   # older, uncompressed format
+            fi
+            echo "restored $(du -h data/news.db | cut -f1)"
           else
             echo "No data branch yet (first run), starting fresh."
           fi
@@ -51,12 +56,12 @@ jobs:
         if: always() && hashFiles('data/news.db') != ''
         run: |
           tmp=$(mktemp -d)
-          cp data/news.db "$tmp/"
+          gzip -9 -c data/news.db > "$tmp/news.db.gz"
           cd "$tmp"
           git init -q -b data
           git config user.name "fullframe-bot"
           git config user.email "fullframe-bot@users.noreply.github.com"
-          git add news.db
+          git add news.db.gz
           git commit -qm "news database $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
 

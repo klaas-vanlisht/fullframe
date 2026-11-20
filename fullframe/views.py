@@ -3,7 +3,7 @@ import datetime as dt
 import json
 from collections import defaultdict
 
-from .feeds import good_image
+from .feeds import good_image, upgrade_image_url
 from .util import country_names, hours_ago, iso, now_utc
 
 __all__ = ["story_cards", "story_detail", "list_sources", "stats"]
@@ -91,7 +91,7 @@ def _story_card(st, arts, sources, active):
         "headline": (aiobj or {}).get("headline") or st["headline"],
         "original_headline": st["headline"],
         "summary": summary,
-        "image": st["image"] if good_image(st["image"]) else None,
+        "image": upgrade_image_url(st["image"]) if good_image(st["image"]) else None,
         "topic": st["topic"] or "Other",
         "countries": story_countries(src_ids, sources),
         "n_sources": len(src_ids),
@@ -103,7 +103,7 @@ def _story_card(st, arts, sources, active):
         "bias": b,
         "source_names": [sources[s]["name"] for s in src_ids if s in sources][:8],
         "score": round(len(src_ids) / (1.0 + hours_ago(st["last_article_at"]) / 6.0), 4),
-        "titles": " ".join(a["title"] for a in arts).lower()[:300],
+        "titles": " ".join(a["title"] for a in arts).lower()[:220],
     }
 
 
@@ -111,7 +111,7 @@ def story_detail(db, sources, story_id, excerpts=True, images=True, active=None)
     st = db.one("SELECT * FROM stories WHERE id = ?", (story_id,))
     if not st:
         return None
-    arts = db.q("SELECT id, source_id, title, description, url, image, published FROM articles "
+    arts = db.q("SELECT id, source_id, title, description, url, image, og_image, published FROM articles "
                 "WHERE story_id = ? ORDER BY published DESC", (story_id,))
     active = active or _active_per_side(db, sources)
     card = _story_card(st, arts, sources, active)
@@ -126,7 +126,8 @@ def story_detail(db, sources, story_id, excerpts=True, images=True, active=None)
         s = sources.get(a["source_id"], {})
         out_arts.append({
             "title": a["title"], "url": a["url"], "description": a["description"] if excerpts else None,
-            "image": a["image"] if images and good_image(a["image"]) else None,
+            "image": (a["og_image"] if good_image(a["og_image"]) else upgrade_image_url(a["image"]) if good_image(a["image"]) else None)
+                     if images else None,
             "published": a["published"], "source_id": a["source_id"], "source": s.get("name", a["source_id"]),
             "lean": s.get("lean", "unrated"), "side": s.get("side", "unrated"),
             "factuality": s.get("factuality", "unrated"), "country": s.get("country"), "lang": s.get("lang", "en"),
@@ -183,5 +184,11 @@ def story_cards(db, sources, cfg, images=True, min_sources=2):
         if not images:
             c["image"] = None
         cards.append(c)
+    # keep the download small: the strongest ~900 stories of the week (recent ones get a boost)
+    cards.sort(key=lambda c: -(c["n_sources"] / (1.0 + hours_ago(c["updated"]) / 24.0)))
+    cards = cards[:cfg.get("publish", {}).get("max_stories", 900)]
+    for c in cards:
+        if c.get("summary") and len(c["summary"]) > 280:
+            c["summary"] = c["summary"][:280].rsplit(" ", 1)[0] + "…"
     cards.sort(key=lambda c: -c["score"])
     return cards, active

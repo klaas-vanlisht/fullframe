@@ -105,8 +105,8 @@ aside section { margin-bottom: 28px; }
 .card h3 { font-family: var(--serif); font-size: 18.5px; line-height: 1.25; margin: 0; font-weight: 650; letter-spacing: -.005em; }
 .card .snip { font-size: 13.5px; color: var(--ink-2); margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .card .meta { margin-top: auto; }
-.lead { display: grid; grid-template-columns: 1.25fr 1fr; margin-bottom: 26px; }
-.lead .img { aspect-ratio: auto; min-height: 300px; position: relative; }
+.lead { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); margin-bottom: 26px; }
+.lead .img { aspect-ratio: auto; min-height: 320px; min-width: 0; position: relative; overflow: hidden; }
 .lead .img img { position: absolute; inset: 0; }
 .lead .body { padding: 22px 24px; gap: 12px; }
 .lead.noimg { grid-template-columns: 1fr; }
@@ -229,7 +229,7 @@ table.src tr:last-child td { border-bottom: 0; }
   .tabs { order: 4; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
   .status { margin-left: auto; }
-  .lead { grid-template-columns: 1fr; } .lead .img { min-height: 200px; } .lead h3 { font-size: 24px; }
+  .lead { grid-template-columns: minmax(0, 1fr); } .lead .img { aspect-ratio: 16/9; min-height: 0; } .lead h3 { font-size: 24px; }
   .framing, .gap-cols { grid-template-columns: 1fr; }
   .story h1 { font-size: 28px; }
   .wrap { padding: 0 14px; }

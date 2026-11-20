@@ -102,7 +102,10 @@
   }
   function card(s, lead = false) {
     const ph = `<div class="img ph" style="aspect-ratio:16/9"><span>${esc(s.topic)}</span></div>`;
-    const img = !s.image ? (lead ? "" : ph) : `<div class="img" style="aspect-ratio:16/9;overflow:hidden" data-topic="${esc(s.topic)}"><img src="${safeUrl(s.image)}" alt="" loading="${lead ? "eager" : "lazy"}" referrerpolicy="no-referrer" onerror="imgFail(this)" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block"></div>`;
+    // grid cards: fixed 16:9 frame. lead card: the picture fills its column (stylesheet sizes it), never wider.
+    const frame = lead ? "position:relative;overflow:hidden" : "aspect-ratio:16/9;overflow:hidden";
+    const fill = lead ? "position:absolute;inset:0;" : "";
+    const img = !s.image ? (lead ? "" : ph) : `<div class="img" style="${frame}" data-topic="${esc(s.topic)}"><img src="${safeUrl(s.image)}" alt="" loading="${lead ? "eager" : "lazy"}" referrerpolicy="no-referrer" onerror="imgFail(this)" style="${fill}width:100%;height:100%;object-fit:cover;object-position:center;display:block"></div>`;
     return `<a class="card${lead ? " lead" : ""}${s.image ? "" : " noimg"}" href="#/story/${s.id}">
       ${img}
       <div class="body">

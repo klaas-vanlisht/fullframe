@@ -67,6 +67,11 @@ class DB:
             cols = {r[1] for r in self.conn.execute("PRAGMA table_info(stories)")}
             if "lang_checked" not in cols:  # upgrade older databases
                 self.conn.execute("ALTER TABLE stories ADD COLUMN lang_checked INTEGER DEFAULT 0")
+            if "image_hi" not in cols:
+                self.conn.execute("ALTER TABLE stories ADD COLUMN image_hi INTEGER DEFAULT 0")
+            acols = {r[1] for r in self.conn.execute("PRAGMA table_info(articles)")}
+            if "og_image" not in acols:
+                self.conn.execute("ALTER TABLE articles ADD COLUMN og_image TEXT")
             self.conn.commit()
 
     def q(self, sql, args=()):
