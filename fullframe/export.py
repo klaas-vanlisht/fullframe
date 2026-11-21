@@ -5,6 +5,7 @@ website on GitHub Pages. Public builds leave out publishers' excerpts and images
 by default (see "publish" in config.json): only headlines, links and AI summaries.
 """
 import hashlib
+import html
 import json
 import os
 import shutil
@@ -32,6 +33,39 @@ def _stamp_assets(index_path, out_dir):
         page = page.replace('"%s"' % name, '"%s?v=%s"' % (name, v))
     with open(index_path, "w", encoding="utf-8") as f:
         f.write(page)
+
+
+def _seo(out_dir, cards, cfg):
+    """Search-engine extras for the public site: real headlines in the HTML (so crawlers see
+    content without running JavaScript), site-verification tags and a sitemap."""
+    pub = cfg.get("publish", {})
+    url = pub.get("site_url", "").rstrip("/") + "/"
+    index_path = os.path.join(out_dir, "index.html")
+    with open(index_path, encoding="utf-8") as f:
+        page = f.read()
+    top = sorted((c for c in cards if c["n_sources"] >= cfg["min_sources_top"]), key=lambda c: -c["score"])[:30]
+    items = []
+    for c in top:
+        summ = "<p>%s</p>" % html.escape(c["summary"]) if c.get("summary") else ""
+        items.append('<li><a href="#/story/%d"><h3>%s</h3></a>%s<p class="aside-note">%s · covered by %d outlets</p></li>'
+                     % (c["id"], html.escape(c["headline"]), summ, html.escape(c["topic"]), c["n_sources"]))
+    if items:
+        page = page.replace("<!--STATIC_STORIES-->",
+                            '<h2 class="section-title">Top stories</h2><ul class="static-list">%s</ul>' % "".join(items))
+    tags = []
+    if pub.get("google_site_verification"):
+        tags.append('<meta name="google-site-verification" content="%s">' % html.escape(pub["google_site_verification"]))
+    if pub.get("bing_site_verification"):
+        tags.append('<meta name="msvalidate.01" content="%s">' % html.escape(pub["bing_site_verification"]))
+    page = page.replace("<!--SITE_VERIFICATION-->", "\n".join(tags))
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(page)
+    if url != "/":
+        with open(os.path.join(out_dir, "sitemap.xml"), "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n'
+                    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+                    '  <url><loc>%s</loc><lastmod>%s</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url>\n'
+                    '</urlset>\n' % (html.escape(url), now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")))
 
 
 def export(db, sources, cfg, out_dir, public, ai_status=None, copy_web=False):
@@ -73,6 +107,9 @@ def export(db, sources, cfg, out_dir, public, ai_status=None, copy_web=False):
                 os.remove(os.path.join(story_dir, name))
             except OSError:
                 pass
+
+    if copy_web and public:
+        _seo(out_dir, cards, cfg)
 
     _write_json(os.path.join(data_dir, "stories.json"), {"generated": iso(now_utc()), "stories": cards})
     _write_json(os.path.join(data_dir, "sources.json"), views.list_sources(db, sources))

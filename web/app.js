@@ -4,6 +4,7 @@
   "use strict";
   const $ = (s, el = document) => el.querySelector(s);
   const app = $("#app");
+  const HOME_TITLE = document.title;  // the full title in index.html is what search engines show
   const TOPICS = ["All", "Politics", "World", "Business", "Technology", "Science", "Health",
     "Climate & Environment", "Crime & Justice", "Sports", "Entertainment"];
   const sideLabel = { left: "Left", center: "Center", right: "Right", unrated: "Unrated" };
@@ -147,7 +148,6 @@
   // ---------------------------------------------------------------- data
   async function loadStatus() {
     status = await getJSON("data/status.json").catch(() => null);
-    if (status && status.site_title) document.title = status.site_title;
   }
   async function loadStories(force) {
     if (stories && !force) return stories;
@@ -387,6 +387,7 @@
     let s;
     try { s = await getJSON("data/story/" + encodeURIComponent(id) + ".json"); }
     catch { app.innerHTML = `<div class="empty"><h2>Story not found</h2><p>It may have been merged into another story or aged out. <a href="#/">Back to top stories</a></p></div>`; return; }
+    document.title = s.headline + " – Fullframe News";
     const b = s.bias, c = b.counts, ai = s.ai;
     const canRegen = LOCAL && live && live.ai && live.ai.available;
     let aiHtml;
@@ -524,6 +525,8 @@
   async function route() {
     const { parts, params } = parseHash();
     if (parts[0] !== "search") $("#search").value = "";
+    const label = { latest: "Latest", week: "This Week", gaps: "Coverage Gaps", sources: "Sources", search: "Search" }[parts[0]];
+    document.title = label ? label + " – Fullframe News" : HOME_TITLE;
     try {
       if (parts[0] === "story" && parts[1]) await viewStory(parts[1]);
       else if (parts[0] === "latest") await viewTop(params, "latest");

@@ -256,3 +256,4 @@ table.src tr:last-child td { border-bottom: 0; }
 .empty .btn-solid { font-size: 15px; padding: 9px 20px; }
 #cookie-settings { color: var(--ink-3); text-decoration: underline; }
 @media (max-width: 640px) { .consent-inner { flex-direction: column; align-items: stretch; } .consent-btns { justify-content: flex-end; } }
+.static-list { list-style: none; padding: 0; margin: 0; } .static-list li { padding: 12px 0; border-bottom: 1px solid var(--rule); } .static-list h3 { font-family: var(--serif); font-size: 18px; margin: 0 0 4px; }

@@ -24,7 +24,11 @@
   },
   "min_outlets_for_country_tab": 2,
   "publish": {
-    "site_title": "Fullframe",
+    "site_title": "Fullframe News",
+    "site_url": "https://klaas-vanlisht.github.io/fullframe/",
+    "_seo_help": "Paste the code from Google Search Console (HTML tag method: only the content=\"...\" part) into google_site_verification, and likewise for Bing Webmaster Tools.",
+    "google_site_verification": "",
+    "bing_site_verification": "",
     "include_excerpts": false,
     "include_images": true,
     "keep_days": 8,

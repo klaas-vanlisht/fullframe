@@ -82,7 +82,7 @@ def load_config():
     cfg.setdefault("min_sources_top", 3)
     cfg.setdefault("min_outlets_for_country_tab", 2)
     pub = cfg.setdefault("publish", {})
-    pub.setdefault("site_title", "Fullframe")
+    pub.setdefault("site_title", "Fullframe News")
     pub.setdefault("include_excerpts", False)
     pub.setdefault("include_images", False)
     pub.setdefault("keep_days", 4)
